@@ -1,0 +1,140 @@
+import "dotenv/config";
+import Fastify from "fastify";
+import type { WeatherResponse } from "./types/weather.js";
+import { pool } from "./db/pool.js";
+
+const fastify = Fastify({ logger: true });
+
+async function fetchWeather() {
+  const apiUrl = process.env.WEATHER_API_URL!;
+  const apiKey = process.env.WEATHER_API_KEY!;
+  const q = process.env.WEATHER_Q!;
+
+  const url = `${apiUrl}?key=${apiKey}&q=${encodeURIComponent(q)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`WeatherAPI ${res.status}: ${await res.text()}`);
+  const data = (await res.json()) as WeatherResponse;
+
+  console.log("Weather data received:", {
+    location: data.location.name,
+    region: data.location.region,
+    country: data.location.country,
+    temp_c: data.current.temp_c,
+    feelslike_c: data.current.feelslike_c,
+    condition: data.current.condition.text,
+    humidity: data.current.humidity,
+    wind_kph: data.current.wind_kph,
+    last_updated: data.current.last_updated,
+  });
+
+  return data;
+}
+
+async function saveWeather(data: WeatherResponse) {
+  // Use current time for continuous timeline, store API time in raw data
+  const observedAt = new Date(); // Use ingestion time for continuous data
+  const location = process.env.WEATHER_LOCATION!;
+
+  await pool.query(
+    `
+    INSERT INTO weather_observations (
+      location, observed_at,
+      temp_c, feelslike_c, humidity, pressure_mb, precip_mm,
+      wind_kph, wind_degree, wind_dir, gust_kph,
+      cloud, uv, vis_km, is_day,
+      condition_text, condition_code, condition_icon,
+      raw
+    )
+    VALUES (
+      $1, $2,
+      $3, $4, $5, $6, $7,
+      $8, $9, $10, $11,
+      $12, $13, $14, $15,
+      $16, $17, $18,
+      $19
+    )
+    ON CONFLICT (location, observed_at) DO UPDATE SET
+      temp_c=EXCLUDED.temp_c,
+      feelslike_c=EXCLUDED.feelslike_c,
+      humidity=EXCLUDED.humidity,
+      pressure_mb=EXCLUDED.pressure_mb,
+      precip_mm=EXCLUDED.precip_mm,
+      wind_kph=EXCLUDED.wind_kph,
+      wind_degree=EXCLUDED.wind_degree,
+      wind_dir=EXCLUDED.wind_dir,
+      gust_kph=EXCLUDED.gust_kph,
+      cloud=EXCLUDED.cloud,
+      uv=EXCLUDED.uv,
+      vis_km=EXCLUDED.vis_km,
+      is_day=EXCLUDED.is_day,
+      condition_text=EXCLUDED.condition_text,
+      condition_code=EXCLUDED.condition_code,
+      condition_icon=EXCLUDED.condition_icon,
+      raw=EXCLUDED.raw
+    `,
+    [
+      location,
+      observedAt,
+      data.current.temp_c,
+      data.current.feelslike_c,
+      data.current.humidity,
+      data.current.pressure_mb,
+      data.current.precip_mm,
+      data.current.wind_kph,
+      data.current.wind_degree,
+      data.current.wind_dir,
+      data.current.gust_kph,
+      data.current.cloud,
+      data.current.uv,
+      data.current.vis_km,
+      data.current.is_day,
+      data.current.condition.text,
+      data.current.condition.code,
+      data.current.condition.icon,
+      JSON.stringify(data),
+    ],
+  );
+}
+
+// Health check endpoint
+fastify.get("/health", async (request, reply) => {
+  try {
+    await pool.query("SELECT 1");
+    return { status: "ok", database: "connected" };
+  } catch (error) {
+    reply.code(503);
+    return { status: "error", database: "disconnected", error: String(error) };
+  }
+});
+
+// Ingest weather data endpoint
+fastify.post("/ingest", async (request, reply) => {
+  try {
+    const data = await fetchWeather();
+    await saveWeather(data);
+    return {
+      status: "success",
+      location: data.location.name,
+      temp_c: data.current.temp_c,
+      condition: data.current.condition.text,
+      observed_at: data.current.last_updated,
+    };
+  } catch (error) {
+    reply.code(500);
+    return { status: "error", message: String(error) };
+  }
+});
+
+// Start server
+const start = async () => {
+  try {
+    const port = Number(process.env.PORT) || 3000;
+    const host = process.env.HOST || "0.0.0.0";
+    await fastify.listen({ port, host });
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();
