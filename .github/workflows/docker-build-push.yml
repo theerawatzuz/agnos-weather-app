@@ -101,7 +101,7 @@ jobs:
           git checkout ${BRANCH}
 
           # Update image tag in manifest
-          MANIFEST_PATH="03-argocd-apps/applications/manifests/app-weather/templates/deployment.yaml"
+          MANIFEST_PATH="03-argocd-apps/applications/manifests/app-weather/templates/templates/deployment.yaml"
           sed -i "s|image: bankt21/weather-ingest:.*|image: bankt21/weather-ingest:${IMAGE_TAG}|g" ${MANIFEST_PATH}
 
           # Commit and push
