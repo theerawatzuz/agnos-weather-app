@@ -96,14 +96,22 @@ async function saveWeather(data: WeatherResponse) {
   );
 }
 
-// Health check endpoint
-fastify.get("/health", async (request, reply) => {
+// Health check endpoints
+fastify.get("/health/live", async (request, reply) => {
+  return { status: "alive" };
+});
+
+fastify.get("/health/ready", async (request, reply) => {
   try {
     await pool.query("SELECT 1");
-    return { status: "ok", database: "connected" };
+    return { status: "ready", database: "connected" };
   } catch (error) {
     reply.code(503);
-    return { status: "error", database: "disconnected", error: String(error) };
+    return {
+      status: "not ready",
+      database: "disconnected",
+      error: String(error),
+    };
   }
 });
 
@@ -142,6 +150,23 @@ const start = async () => {
     const port = Number(process.env.PORT) || 3000;
     const host = process.env.HOST || "0.0.0.0";
     await fastify.listen({ port, host });
+
+    // Start periodic weather fetching (every 30 seconds)
+    const intervalMs = 30 * 1000; // 30 seconds
+    setInterval(async () => {
+      try {
+        fastify.log.info("Fetching weather data (scheduled)...");
+        const data = await fetchWeather();
+        await saveWeather(data);
+        fastify.log.info("Weather data saved successfully");
+      } catch (error) {
+        fastify.log.error({ err: error }, "Failed to fetch/save weather data");
+      }
+    }, intervalMs);
+
+    fastify.log.info(
+      `Weather data will be fetched every ${intervalMs / 1000} seconds`,
+    );
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
