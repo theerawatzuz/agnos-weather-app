@@ -107,6 +107,17 @@ fastify.get("/health", async (request, reply) => {
   }
 });
 
+// Get weather data endpoint (passthrough)
+fastify.get("/get-weather", async (request, reply) => {
+  try {
+    const data = await fetchWeather();
+    return data;
+  } catch (error) {
+    reply.code(500);
+    return { status: "error", message: String(error) };
+  }
+});
+
 // Ingest weather data endpoint
 fastify.post("/ingest", async (request, reply) => {
   try {
