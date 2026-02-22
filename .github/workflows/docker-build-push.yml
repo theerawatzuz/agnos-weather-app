@@ -86,3 +86,29 @@ jobs:
         run: |
           echo "Image pushed successfully!"
           echo "Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
+
+      - name: Update manifest in GitOps repo
+        if: github.event_name != 'pull_request'
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          IMAGE_TAG="${{ steps.tag.outputs.tag }}"
+
+          # Clone GitOps repo
+          git clone https://${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }}.git gitops
+          cd gitops
+
+          # Checkout appropriate branch
+          git checkout ${BRANCH}
+
+          # Update image tag in manifest
+          MANIFEST_PATH="03-argocd-apps/manifests/app-weather/templates/deployment.yaml"
+          sed -i "s|image: bankt21/weather-ingest:.*|image: bankt21/weather-ingest:${IMAGE_TAG}|g" ${MANIFEST_PATH}
+
+          # Commit and push
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add ${MANIFEST_PATH}
+          git commit -m "chore: update weather-ingest image to ${IMAGE_TAG}"
+          git push origin ${BRANCH}
+
+          echo "Updated manifest in GitOps repo (${BRANCH} branch)"
