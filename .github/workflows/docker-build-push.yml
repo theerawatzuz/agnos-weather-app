@@ -21,7 +21,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,10 +43,10 @@ jobs:
 
           # Fetch tags from Docker Hub API
           TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100" | \
-                 jq -r '.results[].name' | \
-                 grep "^v[0-9]*$" | \
-                 sort -V | \
-                 tail -1)
+            jq -r '.results[].name' | \
+            grep "^v[0-9]*$" | \
+            sort -V | \
+            tail -1)
 
           if [ -z "$TAGS" ]; then
             # No previous version found, start with v1
@@ -97,18 +96,31 @@ jobs:
           git clone https://${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }}.git gitops
           cd gitops
 
-          # Checkout appropriate branch
-          git checkout ${BRANCH}
+          # Always checkout production branch
+          git checkout production
+          git pull origin production
 
-          # Update image tag in manifest
-          MANIFEST_PATH="03-argocd-apps/manifests/app-weather/templates/templates/deployment.yaml"
-          sed -i "s|image: bankt21/weather-ingest:.*|image: bankt21/weather-ingest:${IMAGE_TAG}|g" ${MANIFEST_PATH}
+          # Correct path to values file
+          VALUES_FILE="03-argocd-apps/manifests/app-weather/values-${BRANCH}.yaml"
 
-          # Commit and push
+          # Check if file exists
+          if [ ! -f "${VALUES_FILE}" ]; then
+            echo "❌ Error: ${VALUES_FILE} not found!"
+            exit 1
+          fi
+
+          # Update imageTag in values file
+          if grep -q "imageTag:" ${VALUES_FILE}; then
+            sed -i "s|imageTag: v.*|imageTag: ${IMAGE_TAG}|g" ${VALUES_FILE}
+          else
+            echo "imageTag: ${IMAGE_TAG}" >> ${VALUES_FILE}
+          fi
+
+          # Commit and push to production branch
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add ${MANIFEST_PATH}
-          git commit -m "chore: update weather-ingest image to ${IMAGE_TAG}"
-          git push origin ${BRANCH}
+          git add ${VALUES_FILE}
+          git commit -m "chore(${BRANCH}): update weather-ingest image to ${IMAGE_TAG}"
+          git push origin production
 
-          echo "Updated manifest in GitOps repo (${BRANCH} branch)"
+          echo "✅ Updated ${VALUES_FILE} in production branch with tag ${IMAGE_TAG}"
