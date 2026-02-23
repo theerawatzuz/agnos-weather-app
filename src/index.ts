@@ -5,7 +5,17 @@ import promClient from "prom-client";
 import type { WeatherResponse } from "./types/weather.js";
 import { pool } from "./db/pool.js";
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || "info",
+    formatters: {
+      level(label) {
+        return { level: label };
+      },
+    },
+    timestamp: () => `,"time":"${new Date().toISOString()}"`,
+  },
+});
 
 // Setup Prometheus metrics
 const register = new promClient.Registry();
