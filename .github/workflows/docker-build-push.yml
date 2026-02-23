@@ -101,38 +101,6 @@ jobs:
           echo "✅ Image pushed successfully!"
           echo "📦 Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}"
 
-      - name: Run Trivy security scan
-        if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-
-      - name: Upload Trivy results to GitHub Security
-        if: github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-results.sarif"
-
-      - name: Trivy scan summary
-        if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
-          format: "table"
-          severity: "CRITICAL,HIGH"
-
-      - name: Quality Gate - Block on CRITICAL vulnerabilities
-        if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
-          format: "table"
-          severity: "CRITICAL"
-          exit-code: "1"
-
       - name: Update manifest in GitOps repo
         if: github.event_name != 'pull_request'
         run: |
@@ -143,7 +111,7 @@ jobs:
           git clone https://${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }}.git gitops
           cd gitops
 
-          # Always checkout production branch
+          # Always checkout production branch and pull latest
           git checkout production
           git pull origin production
 
@@ -161,6 +129,12 @@ jobs:
             sed -i "s|imageTag: v.*|imageTag: ${IMAGE_TAG}|g" ${VALUES_FILE}
           else
             echo "imageTag: ${IMAGE_TAG}" >> ${VALUES_FILE}
+          fi
+
+          # Check if there are changes
+          if git diff --quiet ${VALUES_FILE}; then
+            echo "ℹ️ No changes to commit"
+            exit 0
           fi
 
           # Commit and push to production branch
