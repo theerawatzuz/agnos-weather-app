@@ -15,6 +15,55 @@ const fastify = Fastify({
     },
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
   },
+  disableRequestLogging: false,
+});
+
+// Log response with status code
+fastify.addHook("onResponse", async (request, reply) => {
+  const level =
+    reply.statusCode >= 500
+      ? "error"
+      : reply.statusCode >= 400
+        ? "warn"
+        : "info";
+
+  fastify.log[level]({
+    msg: "request completed",
+    method: request.method,
+    url: request.url,
+    statusCode: reply.statusCode,
+    responseTime: reply.elapsedTime,
+  });
+});
+
+// Handle 404 errors
+fastify.setNotFoundHandler((request, reply) => {
+  fastify.log.warn({
+    msg: "Route not found",
+    method: request.method,
+    url: request.url,
+  });
+  reply.code(404).send({
+    statusCode: 404,
+    error: "Not Found",
+    message: `Route ${request.method}:${request.url} not found`,
+  });
+});
+
+// Handle all errors
+fastify.setErrorHandler((error: Error, request, reply) => {
+  fastify.log.error({
+    msg: "Request error",
+    method: request.method,
+    url: request.url,
+    err: error,
+  });
+  const statusCode = (error as any).statusCode || 500;
+  reply.code(statusCode).send({
+    statusCode,
+    error: error.name || "Internal Server Error",
+    message: error.message,
+  });
 });
 
 // Setup Prometheus metrics
