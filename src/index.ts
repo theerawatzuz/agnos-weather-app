@@ -1,3 +1,4 @@
+import "./tracing.js";
 import "dotenv/config";
 import Fastify from "fastify";
 import promClient from "prom-client";
