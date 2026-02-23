@@ -194,16 +194,13 @@ const start = async () => {
 
     fastify.log.info({ msg: "Server started successfully", port, host });
 
-    // Self health check interval (every 30 seconds)
+    // Heartbeat log (every 30 seconds)
     const intervalMs = 30 * 1000;
-    setInterval(async () => {
-      try {
-        const response = await fetch(`http://${host}:${port}/health`);
-        const data = await response.json();
-        fastify.log.info({ msg: "Health check", status: data.status });
-      } catch (error) {
-        fastify.log.error({ msg: "Health check failed", err: error });
-      }
+    setInterval(() => {
+      fastify.log.info({
+        msg: "still alive",
+        timestamp: new Date().toISOString(),
+      });
     }, intervalMs);
   } catch (err) {
     fastify.log.error(err);
