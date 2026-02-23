@@ -1,33 +1,62 @@
 import "dotenv/config";
 import Fastify from "fastify";
+import promClient from "prom-client";
 import type { WeatherResponse } from "./types/weather.js";
 import { pool } from "./db/pool.js";
 
 const fastify = Fastify({ logger: true });
 
+// Setup Prometheus metrics
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register });
+
+// Custom metrics
+const weatherFetchCounter = new promClient.Counter({
+  name: "weather_fetch_total",
+  help: "Total number of weather fetch attempts",
+  labelNames: ["status"],
+  registers: [register],
+});
+
+const weatherFetchDuration = new promClient.Histogram({
+  name: "weather_fetch_duration_seconds",
+  help: "Duration of weather fetch operations",
+  registers: [register],
+});
+
 async function fetchWeather() {
-  const apiUrl = process.env.WEATHER_API_URL!;
-  const apiKey = process.env.WEATHER_API_KEY!;
-  const q = process.env.WEATHER_Q!;
+  const end = weatherFetchDuration.startTimer();
+  try {
+    const apiUrl = process.env.WEATHER_API_URL!;
+    const apiKey = process.env.WEATHER_API_KEY!;
+    const q = process.env.WEATHER_Q!;
 
-  const url = `${apiUrl}?key=${apiKey}&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`WeatherAPI ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as WeatherResponse;
+    const url = `${apiUrl}?key=${apiKey}&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url);
+    if (!res.ok)
+      throw new Error(`WeatherAPI ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as WeatherResponse;
 
-  console.log("Weather data received:", {
-    location: data.location.name,
-    region: data.location.region,
-    country: data.location.country,
-    temp_c: data.current.temp_c,
-    feelslike_c: data.current.feelslike_c,
-    condition: data.current.condition.text,
-    humidity: data.current.humidity,
-    wind_kph: data.current.wind_kph,
-    last_updated: data.current.last_updated,
-  });
+    console.log("Weather data received:", {
+      location: data.location.name,
+      region: data.location.region,
+      country: data.location.country,
+      temp_c: data.current.temp_c,
+      feelslike_c: data.current.feelslike_c,
+      condition: data.current.condition.text,
+      humidity: data.current.humidity,
+      wind_kph: data.current.wind_kph,
+      last_updated: data.current.last_updated,
+    });
 
-  return data;
+    weatherFetchCounter.inc({ status: "success" });
+    return data;
+  } catch (error) {
+    weatherFetchCounter.inc({ status: "error" });
+    throw error;
+  } finally {
+    end();
+  }
 }
 
 async function saveWeather(data: WeatherResponse) {
@@ -113,6 +142,12 @@ fastify.get("/health/ready", async (request, reply) => {
       error: String(error),
     };
   }
+});
+
+// Prometheus metrics endpoint
+fastify.get("/metrics", async (request, reply) => {
+  reply.type("text/plain");
+  return register.metrics();
 });
 
 // Get weather data endpoint (passthrough)
