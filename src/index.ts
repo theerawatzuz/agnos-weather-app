@@ -37,7 +37,8 @@ async function fetchWeather() {
       throw new Error(`WeatherAPI ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as WeatherResponse;
 
-    console.log("Weather data received:", {
+    fastify.log.info({
+      msg: "Weather data received",
       location: data.location.name,
       region: data.location.region,
       country: data.location.country,
@@ -153,9 +154,11 @@ fastify.get("/metrics", async (request, reply) => {
 // Get weather data endpoint (passthrough)
 fastify.get("/get-weather", async (request, reply) => {
   try {
+    fastify.log.info({ msg: "GET /get-weather called" });
     const data = await fetchWeather();
     return data;
   } catch (error) {
+    fastify.log.error({ err: error, msg: "Failed to fetch weather data" });
     reply.code(500);
     return { status: "error", message: String(error) };
   }
@@ -164,8 +167,10 @@ fastify.get("/get-weather", async (request, reply) => {
 // Ingest weather data endpoint
 fastify.post("/ingest", async (request, reply) => {
   try {
+    fastify.log.info({ msg: "POST /ingest called" });
     const data = await fetchWeather();
     await saveWeather(data);
+    fastify.log.info({ msg: "Weather data saved to database" });
     return {
       status: "success",
       location: data.location.name,
@@ -174,6 +179,7 @@ fastify.post("/ingest", async (request, reply) => {
       observed_at: data.current.last_updated,
     };
   } catch (error) {
+    fastify.log.error({ err: error, msg: "Failed to ingest weather data" });
     reply.code(500);
     return { status: "error", message: String(error) };
   }
@@ -186,22 +192,13 @@ const start = async () => {
     const host = process.env.HOST || "0.0.0.0";
     await fastify.listen({ port, host });
 
-    // Start periodic weather fetching (every 30 seconds)
-    const intervalMs = 30 * 1000; // 30 seconds
-    setInterval(async () => {
-      try {
-        fastify.log.info("Fetching weather data (scheduled)...");
-        const data = await fetchWeather();
-        await saveWeather(data);
-        fastify.log.info("Weather data saved successfully");
-      } catch (error) {
-        fastify.log.error({ err: error }, "Failed to fetch/save weather data");
-      }
-    }, intervalMs);
+    fastify.log.info({ msg: "Server started successfully", port, host });
 
-    fastify.log.info(
-      `Weather data will be fetched every ${intervalMs / 1000} seconds`,
-    );
+    // Health check interval (every 30 seconds)
+    const intervalMs = 30 * 1000;
+    setInterval(() => {
+      fastify.log.info({ msg: "ok" });
+    }, intervalMs);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
