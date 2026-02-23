@@ -127,11 +127,11 @@ async function saveWeather(data: WeatherResponse) {
 }
 
 // Health check endpoints
-fastify.get("/health/live", async (request, reply) => {
+fastify.get("/health", async (request, reply) => {
   return { status: "alive" };
 });
 
-fastify.get("/health/ready", async (request, reply) => {
+fastify.get("/ready", async (request, reply) => {
   try {
     await pool.query("SELECT 1");
     return { status: "ready", database: "connected" };
@@ -198,7 +198,7 @@ const start = async () => {
     const intervalMs = 30 * 1000;
     setInterval(async () => {
       try {
-        const response = await fetch(`http://${host}:${port}/health/live`);
+        const response = await fetch(`http://${host}:${port}/health`);
         const data = await response.json();
         fastify.log.info({ msg: "Health check", status: data.status });
       } catch (error) {
