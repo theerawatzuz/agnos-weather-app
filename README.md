@@ -1,69 +1,63 @@
-# Weather Ingest Service
+# Weather Ingest API
 
-ดึงข้อมูลสภาพอากาศจาก WeatherAPI และเก็บลง PostgreSQL
+Simple weather data ingestion service for testing observability stack (Prometheus, Loki, Tempo, Grafana).
 
-## Setup
+## Endpoints
 
-1. ติดตั้ง dependencies:
+### Health Checks
+
+- `GET /health` - Liveness probe (always returns alive)
+- `GET /ready` - Readiness probe (checks database connection)
+
+### Weather Data
+
+- `GET /get-weather` - Fetch current weather data (passthrough)
+- `POST /ingest` - Fetch weather data and save to database
+
+### Observability
+
+- `GET /metrics` - Prometheus metrics endpoint
+
+## Features
+
+- Structured JSON logging (compatible with Loki)
+- Prometheus metrics (request counts, durations)
+- OpenTelemetry tracing (sends to Tempo)
+- Auto-increment Docker image versioning
+- GitOps deployment via ArgoCD
+
+## Environment Variables
 
 ```bash
-npm install
-```
-
-2. ตั้งค่า `.env`:
-
-```env
+# Weather API
 WEATHER_API_URL=https://api.weatherapi.com/v1/current.json
 WEATHER_API_KEY=your_api_key
 WEATHER_LOCATION=osaka
 WEATHER_Q=34.6937,135.5023
 
+# Database
 PGHOST=localhost
 PGPORT=5432
 PGDATABASE=weather
 PGUSER=postgres
 PGPASSWORD=postgres
+
+# Observability
+LOG_LEVEL=info
+TEMPO_URL=http://tempo:3100/v1/traces
 ```
 
-3. Start database:
+## Development
 
 ```bash
-cd ../db
-docker-compose up -d
-```
-
-4. Run migration:
-
-```bash
-npm run migrate
-```
-
-5. Run ingest:
-
-```bash
-npm run dev
+npm install
+npm run build
+npm start
 ```
 
 ## Docker
 
-Build และ push image:
-
 ```bash
-./build-and-push.sh <your-dockerhub-username>
-```
-
-Run container:
-
-```bash
-docker run --rm \
-  -e WEATHER_API_URL=https://api.weatherapi.com/v1/current.json \
-  -e WEATHER_API_KEY=your_key \
-  -e WEATHER_LOCATION=osaka \
-  -e WEATHER_Q=34.6937,135.5023 \
-  -e PGHOST=host.docker.internal \
-  -e PGPORT=5432 \
-  -e PGDATABASE=weather \
-  -e PGUSER=postgres \
-  -e PGPASSWORD=postgres \
-  <your-username>/weather-ingest:latest
+docker build -t weather-ingest .
+docker run -p 3000:3000 --env-file .env weather-ingest
 ```
